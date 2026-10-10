@@ -666,6 +666,7 @@ PUT    /v1/dns/routes
 PATCH  /v1/dns/routes
 DELETE /v1/dns/routes
 GET    /v1/dns/routes/available
+GET    /v1/dns/peers
 
 GET    /v1/dns/search-domains
 PUT    /v1/dns/search-domains
@@ -705,6 +706,35 @@ The profile resource separates desired state from observed state:
 `runtimeState` is one of `disabled`, `starting`, `needs-login`, `running`,
 `stopping`, or `error`. It is tailmix lifecycle state; `backendState` is the
 profile's upstream Tailscale state.
+
+`GET /v1/dns/peers` is a read-only view for local DNS helpers that need to
+translate a peer's canonical tailnet address into the effective address this
+host routes for it:
+
+```json
+{
+  "profiles": [{
+    "id": "p_01k2x7vq3c8m",
+    "name": "work",
+    "magicDnsSuffix": "example.ts.net",
+    "peers": [{
+      "dnsName": "build-1.example.ts.net",
+      "online": true,
+      "addresses": [
+        {"canonicalIp": "100.64.0.7", "effectiveIp": "100.127.0.12"},
+        {"canonicalIp": "fd7a:115c:a1e0::7", "effectiveIp": "fd6d:6e65:7400::c"}
+      ]
+    }]
+  }]
+}
+```
+
+It lists only running profiles with a fresh status and only online peers whose
+canonical addresses already have a reconciled effective lease. Tailscale
+Services, the profile's own node, and dormant leases are omitted. The response
+is empty when the daemon is down or runs in SOCKS mode, because effective
+addresses are host-routable only in TUN mode. It never includes keys, auth URLs,
+socket paths, or state directories.
 
 IP and DNS route resources report the persisted binding and its current
 realization together:

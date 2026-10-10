@@ -57,9 +57,17 @@ type UpdateBackend interface {
 	ApplyUpdate(context.Context) (UpdateStatus, error)
 }
 
+// DNSPeerBackend is implemented by daemons that can report the online peer
+// address mappings used by local DNS helpers. It is optional so restricted and
+// test backends do not need to model effective addresses.
+type DNSPeerBackend interface {
+	DNSPeers(context.Context) (DNSPeers, error)
+}
+
 func Handler(backend Backend) http.Handler {
 	mux := http.NewServeMux()
 	updates, hasUpdates := backend.(UpdateBackend)
+	dnsPeers, hasDNSPeers := backend.(DNSPeerBackend)
 	updateUnavailable := func(w http.ResponseWriter) {
 		writeResult(w, nil, NewError("unsupported", "this daemon does not support automatic updates"))
 	}
@@ -258,6 +266,15 @@ func Handler(backend Backend) http.Handler {
 	})
 	mux.HandleFunc("DELETE /v1/dns/routes", func(w http.ResponseWriter, r *http.Request) {
 		result, err := backend.ClearDNSRoutes(r.Context())
+		writeResult(w, result, err)
+	})
+
+	mux.HandleFunc("GET /v1/dns/peers", func(w http.ResponseWriter, r *http.Request) {
+		if !hasDNSPeers {
+			writeResult(w, nil, NewError("unsupported", "this daemon does not report DNS peer mappings"))
+			return
+		}
+		result, err := dnsPeers.DNSPeers(r.Context())
 		writeResult(w, result, err)
 	})
 

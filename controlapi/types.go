@@ -283,6 +283,34 @@ type DNSRoutes struct {
 	ReconcileError    string              `json:"reconcileError,omitempty"`
 }
 
+// DNSPeers is the read-only view of the online peers whose effective addresses
+// the host can currently reach. It is intended for local DNS helpers and
+// deliberately omits keys, sockets, state directories, and login URLs.
+type DNSPeers struct {
+	Profiles []DNSPeerProfile `json:"profiles"`
+}
+
+// DNSPeerProfile lists the online peers of one running profile.
+type DNSPeerProfile struct {
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	MagicDNSSuffix string    `json:"magicDnsSuffix,omitempty"`
+	Peers          []DNSPeer `json:"peers"`
+}
+
+// DNSPeer maps one peer's MagicDNS name and canonical tailnet addresses to the
+// effective addresses tailmix routes on this host.
+type DNSPeer struct {
+	DNSName   string           `json:"dnsName"`
+	Online    bool             `json:"online"`
+	Addresses []DNSPeerAddress `json:"addresses"`
+}
+
+type DNSPeerAddress struct {
+	CanonicalIP netip.Addr `json:"canonicalIp"`
+	EffectiveIP netip.Addr `json:"effectiveIp"`
+}
+
 type DNSRouteMutation struct {
 	Domain      string `json:"domain"`
 	ProfileName string `json:"profileName"`

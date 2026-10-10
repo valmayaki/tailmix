@@ -168,6 +168,12 @@ func (c *Client) PatchDNSRoutes(ctx context.Context, request PatchDNSRoutesReque
 	return out, err
 }
 
+func (c *Client) DNSPeers(ctx context.Context) (DNSPeers, error) {
+	var out DNSPeers
+	err := c.do(ctx, http.MethodGet, "/v1/dns/peers", nil, &out)
+	return out, err
+}
+
 func (c *Client) SearchDomains(ctx context.Context) (SearchDomains, error) {
 	var out SearchDomains
 	err := c.do(ctx, http.MethodGet, "/v1/dns/search-domains", nil, &out)
