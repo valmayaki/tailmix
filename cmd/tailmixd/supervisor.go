@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/maisem/tailmix/controlapi"
@@ -90,7 +91,18 @@ type supervisor struct {
 	updateRestart chan updateRestart
 
 	leaseActivity effectiveip.ActivityTracker
+
+	// dnsPeers is the read-only peer view published by reconciliation and
+	// read without mu. See DNSPeers.
+	dnsPeers atomic.Pointer[controlapi.DNSPeers]
+	// statusTimeout bounds each profile Status call made while holding mu.
+	statusTimeout time.Duration
 }
+
+// defaultProfileStatusTimeout bounds one profile LocalAPI status call. A
+// healthy call takes milliseconds; a wedged one must not hold the supervisor
+// lock, and with it every control API request, indefinitely.
+const defaultProfileStatusTimeout = 5 * time.Second
 
 func newSupervisor(store *state.JSONStore, st state.State, initial []runtimeProfile, cfg daemonConfig) *supervisor {
 	if cfg.Stderr == nil {
@@ -111,6 +123,7 @@ func newSupervisor(store *state.JSONStore, st state.State, initial []runtimeProf
 		networkErr:    make(chan error, 4),
 		updateWake:    make(chan struct{}, 1),
 		updateRestart: make(chan updateRestart, 1),
+		statusTimeout: defaultProfileStatusTimeout,
 	}
 	s.leaseActivity.SetLeases(leasesFromState(st.Leases))
 	return s
@@ -434,6 +447,7 @@ func (s *supervisor) stopProfileLocked(profileID string) error {
 		return nil
 	}
 	delete(s.runtimes, profileID)
+	s.publishDNSPeersLocked()
 	if s.mux != nil {
 		s.mux.RemoveProfile(profileID)
 	}
@@ -450,6 +464,7 @@ func (s *supervisor) reconcileLocked() (err error) {
 		} else {
 			s.reconcileErr = ""
 		}
+		s.publishDNSPeersLocked()
 	}()
 	observedStatuses := s.statusesLocked()
 	s.ipPolicy = routingpolicy.BuildIP(s.st, observedStatuses)
@@ -597,7 +612,13 @@ func (s *supervisor) statusesLocked() []tailmixprofile.Status {
 		if managed == nil {
 			continue
 		}
-		status, err := managed.runtime.Engine.Status(s.ctx)
+		timeout := s.statusTimeout
+		if timeout <= 0 {
+			timeout = defaultProfileStatusTimeout
+		}
+		ctx, cancel := context.WithTimeout(s.ctx, timeout)
+		status, err := managed.runtime.Engine.Status(ctx)
+		cancel()
 		managed.statusFresh = err == nil
 		if err != nil {
 			s.lastErrors[configured.ID] = err.Error()

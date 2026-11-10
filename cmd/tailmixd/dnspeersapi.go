@@ -14,21 +14,45 @@ import (
 // effective addresses the host currently routes for them. Only TUN mode
 // installs host routes for effective addresses, so SOCKS mode reports no
 // profiles. Peers without a reconciled lease are omitted rather than guessed.
+//
+// The view is published at the end of every reconciliation, so the read never
+// takes the supervisor lock or calls a profile LocalAPI. Reconciliation holds
+// that lock across LocalAPI calls, route changes and OS DNS updates; a reader
+// that waited for it would miss the short deadline a DNS resolver can afford.
 func (s *supervisor) DNSPeers(_ context.Context) (controlapi.DNSPeers, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	if published := s.dnsPeers.Load(); published != nil {
+		return *published, nil
+	}
+	return controlapi.DNSPeers{Profiles: []controlapi.DNSPeerProfile{}}, nil
+}
 
+// publishDNSPeersLocked projects the cached profile statuses and the current
+// leases for DNSPeers. It makes no LocalAPI calls. The published value is
+// never mutated afterwards.
+func (s *supervisor) publishDNSPeersLocked() {
+	peers := s.dnsPeersLocked()
+	s.dnsPeers.Store(&peers)
+}
+
+func (s *supervisor) dnsPeersLocked() controlapi.DNSPeers {
 	result := controlapi.DNSPeers{Profiles: []controlapi.DNSPeerProfile{}}
 	if s.st.Down || s.cfg.Mode != "tun" {
-		return result, nil
+		return result
 	}
 	effective := make(map[effectiveip.NodeKey]netip.Addr, len(s.st.Leases))
 	for _, lease := range leasesFromState(s.st.Leases) {
 		effective[lease.NodeKey] = lease.EffectiveIP
 	}
-	for _, status := range usableStatuses(s.statusesLocked()) {
-		managed := s.runtimes[status.ProfileID]
-		if managed == nil || !managed.statusFresh || status.BackendState != "Running" {
+	for _, configured := range s.st.Profiles {
+		if configured.Disabled || configured.Removed {
+			continue
+		}
+		managed := s.runtimes[configured.ID]
+		if managed == nil || !managed.statusFresh {
+			continue
+		}
+		status := managed.status
+		if status.ProfileID == "" || status.BackendState != "Running" {
 			continue
 		}
 		profile := controlapi.DNSPeerProfile{
@@ -64,7 +88,7 @@ func (s *supervisor) DNSPeers(_ context.Context) (controlapi.DNSPeers, error) {
 		result.Profiles = append(result.Profiles, profile)
 	}
 	sort.Slice(result.Profiles, func(i, j int) bool { return result.Profiles[i].Name < result.Profiles[j].Name })
-	return result, nil
+	return result
 }
 
 var _ controlapi.DNSPeerBackend = (*supervisor)(nil)
