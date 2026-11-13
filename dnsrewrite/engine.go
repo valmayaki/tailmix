@@ -20,8 +20,8 @@ import (
 	"time"
 )
 
-// Route binds a public DNS suffix to the profile whose peers may rewrite
-// answers under it. The longest matching suffix wins.
+// Route binds a public DNS suffix to one profile, or all profiles when
+// ProfileID is empty. The longest matching suffix wins.
 type Route struct {
 	Suffix    string
 	ProfileID string
@@ -110,14 +110,14 @@ func listenLoopback() (*net.UDPConn, *net.TCPListener, error) {
 func (e *Engine) Addr() netip.AddrPort { return e.addr }
 
 // Update replaces the routes and peer data used for new queries. Routes with
-// an invalid suffix or no profile are ignored. A route whose profile is absent
+// an invalid suffix are ignored. A route whose profile is absent
 // from profiles is still matched: its answers pass through with capped TTLs.
 func (e *Engine) Update(routes []Route, profiles []Profile) {
 	t := &table{snap: buildSnapshot(profiles)}
 	seen := map[string]bool{}
 	for _, r := range routes {
 		suffix, ok := normalizeDomain(r.Suffix)
-		if !ok || suffix == "" || r.ProfileID == "" || seen[suffix] {
+		if !ok || suffix == "" || seen[suffix] {
 			continue
 		}
 		seen[suffix] = true

@@ -928,7 +928,7 @@ func runDNSRewrites(ctx context.Context, client managementClient, args []string,
 		}
 		return writeDNSRewritesResult(deps.stdout, result, jsonOutput)
 	case "add":
-		profileName, set, err := takeProfile(&rest)
+		profileName, _, err := takeProfile(&rest)
 		if err != nil {
 			return err
 		}
@@ -939,9 +939,6 @@ func runDNSRewrites(ctx context.Context, client managementClient, args []string,
 		jsonOutput, err := takeBool(&rest, "--json")
 		if err != nil {
 			return err
-		}
-		if !set {
-			return usageError{"dns rewrites add requires --profile"}
 		}
 		domains, err := parseDomains(rest, false)
 		if err != nil {
@@ -992,7 +989,11 @@ func writeDNSRewritesResult(w io.Writer, result controlapi.DNSRewrites, jsonOutp
 		if rewrite.State != "active" {
 			state = rewrite.State + ":" + rewrite.Reason
 		}
-		fmt.Fprintf(table, "%s\t%s\t%s\n", rewrite.Domain, rewrite.ProfileName, state)
+		profile := rewrite.ProfileName
+		if profile == "" {
+			profile = "all"
+		}
+		fmt.Fprintf(table, "%s\t%s\t%s\n", rewrite.Domain, profile, state)
 	}
 	if result.ReconcileError != "" {
 		fmt.Fprintf(table, "!\t\tfailed:%s\n", result.ReconcileError)
@@ -1803,21 +1804,22 @@ The root suffix "." selects a profile's default DNS resolver route.
 
 const dnsRewritesHelp = `Usage:
   tailmix dns rewrites list [--json]
-  tailmix dns rewrites add --profile <profile> <domain>... [--replace] [--json]
+  tailmix dns rewrites add <domain>... [--profile <profile>] [--replace] [--json]
   tailmix dns rewrites remove <domain>... [--profile <expected-profile>] [--json]
 
 Profile option: -p, --profile <profile>
 
 A rewrite resolves a public DNS suffix, such as a company domain whose records
 point at tailnet addresses, through an encrypted public resolver (Cloudflare,
-then Quad9, over DNS-over-HTTPS). Canonical addresses of the profile's online
-peers in the answer are replaced with the effective addresses this host routes,
-and a CNAME to one of the profile's peers is completed from its peer list.
+then Quad9, over DNS-over-HTTPS). By default, canonical addresses of online
+peers from every profile are replaced with the effective addresses this host
+routes. Use --profile to restrict a rewrite to one profile. Ambiguous addresses
+are left unchanged. A CNAME to a unique peer is completed from its peer list.
 Every other answer passes through unchanged.
 
 Rewrites have the lowest DNS precedence: a suffix already served by a bound,
 imported, or automatic DNS route keeps that route. Rewritten answers, and
-answers under a rewrite whose profile is not running, have their TTL capped at
+answers under a rewrite whose selected profile is not running, have their TTL capped at
 10 seconds. Rewrites require TUN mode.
 `
 

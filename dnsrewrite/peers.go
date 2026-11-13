@@ -60,6 +60,23 @@ func (s *peerSnapshot) profile(id string) *profileView {
 	return s.byID[id]
 }
 
+// peerAcross returns a peer only when its DNS name has one unambiguous owner.
+func (s *peerSnapshot) peerAcross(name string) (*peerAddrs, bool) {
+	if s == nil {
+		return nil, false
+	}
+	var found *peerAddrs
+	for _, profile := range s.byID {
+		if addrs, present := profile.peers[name]; present {
+			if found != nil || addrs == nil {
+				return nil, false
+			}
+			found = addrs
+		}
+	}
+	return found, found != nil
+}
+
 func (p *profileView) peer(name string) (*peerAddrs, bool) {
 	if p == nil {
 		return nil, false
@@ -75,9 +92,8 @@ func (a *peerAddrs) family(v6 bool) []netip.Addr {
 	return a.v4
 }
 
-// translate maps a canonical address seen in a public answer to the selected
-// profile's effective address. Any mapping owned by another profile, or more
-// than one effective address, is ambiguous.
+// translate maps a canonical address seen in a public answer to an effective
+// address. A nonempty profileID restricts the mapping to that profile.
 func (s *peerSnapshot) translate(addr netip.Addr, profileID string) (netip.Addr, translation) {
 	owners := s.byCanonical[addr.Unmap()]
 	if len(owners) == 0 {
@@ -85,7 +101,7 @@ func (s *peerSnapshot) translate(addr netip.Addr, profileID string) (netip.Addr,
 	}
 	effective := owners[0].effective
 	for _, o := range owners {
-		if o.profileID != profileID || o.effective != effective {
+		if (profileID != "" && o.profileID != profileID) || o.effective != effective {
 			return netip.Addr{}, ambiguous
 		}
 	}

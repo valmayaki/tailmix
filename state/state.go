@@ -66,11 +66,11 @@ type DNSRouteBinding struct {
 }
 
 // DNSRewrite resolves a public DNS suffix through an encrypted public
-// resolver and replaces canonical addresses of the profile's online peers in
-// the answers with their effective addresses.
+// resolver and replaces canonical peer addresses with effective addresses.
+// An empty ProfileID matches peers from every running profile when unambiguous.
 type DNSRewrite struct {
 	Domain    string `json:"domain"`
-	ProfileID string `json:"profileId"`
+	ProfileID string `json:"profileId,omitempty"`
 }
 
 type EffectiveLease struct {

@@ -82,6 +82,7 @@ func (r *resolver) handle(ctx context.Context, query []byte, tcp bool) []byte {
 		snap    *peerSnapshot
 		name    string
 		routed  bool
+		global  bool
 	)
 	addressQuery := qi.single && (qi.question.Type == dnsmessage.TypeA || qi.question.Type == dnsmessage.TypeAAAA)
 	if t := r.table.Load(); addressQuery && t != nil {
@@ -90,15 +91,25 @@ func (r *resolver) handle(ctx context.Context, query []byte, tcp bool) []byte {
 		if valid && name != "" {
 			if rt, matched := t.match(name); matched {
 				routed = true
+				global = rt.profileID == ""
 				snap = t.snap
-				profile = snap.profile(rt.profileID)
+				if !global {
+					profile = snap.profile(rt.profileID)
+				}
 			}
 		}
 	}
 
 	// A known online peer FQDN in the selected profile is answered locally.
-	if profile != nil {
-		if addrs, ok := profile.peer(name); ok {
+	if routed && snap != nil {
+		var addrs *peerAddrs
+		var ok bool
+		if profile != nil {
+			addrs, ok = profile.peer(name)
+		} else if global {
+			addrs, ok = snap.peerAcross(name)
+		}
+		if ok {
 			resp, err := synthesize(qi, addrs.family(qi.question.Type == dnsmessage.TypeAAAA), r.maxAnswerTTL)
 			if err == nil {
 				return fitResponse(resp, qi, limit)
@@ -110,7 +121,7 @@ func (r *resolver) handle(ctx context.Context, query []byte, tcp bool) []byte {
 	if err != nil {
 		return fitResponse(errorResponse(qi, dnsmessage.RCodeServerFailure), qi, limit)
 	}
-	if profile != nil {
+	if profile != nil || global {
 		resp = rewrite(resp, qi, name, profile, snap, r.maxAnswerTTL)
 	} else if routed {
 		// The selected profile is not running, so the answer may hold a
@@ -339,7 +350,14 @@ func rewrite(resp []byte, qi queryInfo, qname string, profile *profileView, snap
 	// A CNAME chain that ends at an online peer FQDN of the selected profile
 	// is completed from the peer map, even when public DNS cannot resolve it.
 	if terminal != qname {
-		if addrs, ok := profile.peer(terminal); ok {
+		var addrs *peerAddrs
+		var ok bool
+		if profile != nil {
+			addrs, ok = profile.peer(terminal)
+		} else {
+			addrs, ok = snap.peerAcross(terminal)
+		}
+		if ok {
 			if eff := addrs.family(wantV6); len(eff) > 0 {
 				kept := m.Answers[:0:0]
 				for _, rr := range m.Answers {
@@ -377,7 +395,11 @@ func rewrite(resp []byte, qi queryInfo, qname string, profile *profileView, snap
 		if !ok {
 			continue
 		}
-		effective, result := snap.translate(addr, profile.id)
+		profileID := ""
+		if profile != nil {
+			profileID = profile.id
+		}
+		effective, result := snap.translate(addr, profileID)
 		switch result {
 		case notPeer:
 			continue

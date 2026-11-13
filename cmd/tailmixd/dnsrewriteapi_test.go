@@ -17,6 +17,12 @@ import (
 )
 
 func TestApplyDNSRewritePatch(t *testing.T) {
+	global := testPolicyState()
+	if err := applyDNSRewritePatch(&global, controlapi.PatchDNSRewritesRequest{
+		Add: []controlapi.DNSRouteMutation{{Domain: "global.example"}},
+	}); err != nil || global.DNSRewrites[0] != (state.DNSRewrite{Domain: "global.example"}) {
+		t.Fatalf("global rewrite = %+v, err = %v", global.DNSRewrites, err)
+	}
 	st := testPolicyState()
 	add := func(domain, profile string, replace bool) error {
 		return applyDNSRewritePatch(&st, controlapi.PatchDNSRewritesRequest{

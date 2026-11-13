@@ -169,6 +169,35 @@ func TestAddressOwnedByAnotherProfileIsNotRewritten(t *testing.T) {
 	}
 }
 
+func TestGlobalRewriteUsesPeersAcrossProfiles(t *testing.T) {
+	r, _ := newTestResolver(t, answerWith(t, dnsmessage.RCodeSuccess, false, func(q dnsmessage.Question) []dnsmessage.Resource {
+		return []dnsmessage.Resource{
+			aRecord(q.Name.String(), 300, ishiroCanonical),
+			aRecord(q.Name.String(), 300, netip.MustParseAddr("100.64.0.9")),
+		}
+	}))
+	setTable(r, []Route{{Suffix: "shekel.example"}}, testProfiles())
+	m := unpack(t, r.handle(testCtx(t), buildQuery(t, queryOpts{name: "mixed.shekel.example."}), true))
+	got := addrs(t, m)
+	if len(got) != 2 || got[0] != ishiroEffective || got[1] != netip.MustParseAddr("100.127.0.40") {
+		t.Fatalf("global rewrite answers = %v", got)
+	}
+}
+
+func TestGlobalRewriteLeavesAmbiguousCanonicalAddressUnchanged(t *testing.T) {
+	profiles := testProfiles()
+	profiles[1].Peers[0].Addresses[0].Canonical = ishiroCanonical
+	r, _ := newTestResolver(t, answerWith(t, dnsmessage.RCodeSuccess, false, func(q dnsmessage.Question) []dnsmessage.Resource {
+		return []dnsmessage.Resource{aRecord(q.Name.String(), 300, ishiroCanonical)}
+	}))
+	setTable(r, []Route{{Suffix: "shekel.example"}}, profiles)
+	m := unpack(t, r.handle(testCtx(t), buildQuery(t, queryOpts{name: "mixed.shekel.example."}), true))
+	got := addrs(t, m)
+	if len(got) != 1 || got[0] != ishiroCanonical {
+		t.Fatalf("ambiguous address changed: %v", got)
+	}
+}
+
 func TestPeerNameIsSynthesizedWithoutUpstream(t *testing.T) {
 	up := &fakeUpstream{reply: func([]byte) ([]byte, error) { return nil, errors.New("upstream must not be queried") }}
 	r := &resolver{fwd: newTestForwarder(nil, up), maxAnswerTTL: DefaultMaxAnswerTTL}

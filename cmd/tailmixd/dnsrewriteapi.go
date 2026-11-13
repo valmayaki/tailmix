@@ -70,17 +70,21 @@ func applyDNSRewritePatch(next *state.State, request controlapi.PatchDNSRewrites
 		if err != nil {
 			return err
 		}
-		configured, err := profileByName(next, mutation.ProfileName)
-		if err != nil {
-			return err
-		}
-		if configured.Removed {
-			return controlapi.NewError("profile_not_found", "profile %q is removed", mutation.ProfileName)
+		profileID := ""
+		if mutation.ProfileName != "" {
+			configured, err := profileByName(next, mutation.ProfileName)
+			if err != nil {
+				return err
+			}
+			if configured.Removed {
+				return controlapi.NewError("profile_not_found", "profile %q is removed", mutation.ProfileName)
+			}
+			profileID = configured.ID
 		}
 		index := dnsRewriteIndex(next.DNSRewrites, domain)
 		if index >= 0 {
 			existing := next.DNSRewrites[index]
-			if existing.ProfileID == configured.ID {
+			if existing.ProfileID == profileID {
 				continue
 			}
 			if !request.Replace {
@@ -88,10 +92,10 @@ func applyDNSRewritePatch(next *state.State, request controlapi.PatchDNSRewrites
 					"DNS rewrite %q already belongs to profile %q; pass --replace to override it",
 					domain, profileNameByID(*next, existing.ProfileID))
 			}
-			next.DNSRewrites[index].ProfileID = configured.ID
+			next.DNSRewrites[index].ProfileID = profileID
 			continue
 		}
-		next.DNSRewrites = append(next.DNSRewrites, state.DNSRewrite{Domain: domain, ProfileID: configured.ID})
+		next.DNSRewrites = append(next.DNSRewrites, state.DNSRewrite{Domain: domain, ProfileID: profileID})
 	}
 	state.Normalize(next)
 	return nil
@@ -133,7 +137,7 @@ func (s *supervisor) dnsRewritesLocked() controlapi.DNSRewrites {
 			entry.State, entry.Reason = dnsRewriteInactive, "tailmix is down"
 		case !installed[rewrite.Domain]:
 			entry.State, entry.Reason = dnsRewriteInactive, "another DNS route owns this suffix"
-		case !running[rewrite.ProfileID]:
+		case rewrite.ProfileID != "" && !running[rewrite.ProfileID]:
 			entry.State, entry.Reason = dnsRewriteWaiting, "profile is not running; answers pass through with short TTLs"
 		default:
 			entry.State = dnsRewriteActive

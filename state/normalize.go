@@ -67,7 +67,7 @@ func Normalize(st *State) {
 	rewriteByDomain := make(map[string]DNSRewrite, len(st.DNSRewrites))
 	for _, rewrite := range st.DNSRewrites {
 		domain := normalizeDomain(rewrite.Domain)
-		if domain == "" || domain == "." || rewrite.ProfileID == "" {
+		if domain == "" || domain == "." {
 			continue
 		}
 		rewrite.Domain = domain

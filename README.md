@@ -178,16 +178,17 @@ Explicit bindings override profile-wide accept-all settings. Changes apply
 without restarting `tailmixd`.
 
 Some public domains point at tailnet addresses, for example a company zone
-whose records hold a work tailnet node's `100.x` address. That address is not
-routable through tailmix, so rewrite the domain for that profile:
+whose records hold a tailnet node's `100.x` address. That address is not
+routable through tailmix, so rewrite the domain using all running profiles:
 
 ```sh
-sudo tailmix dns rewrites add --profile work shekel.africa
+sudo tailmix dns rewrites add shekel.africa
 ```
 
 tailmix then resolves the domain through encrypted public DNS (Cloudflare, then
-Quad9) and replaces the profile's canonical peer addresses in the answers with
-their effective addresses. Every other answer is passed through unchanged.
+Quad9) and replaces unambiguous canonical peer addresses from any running
+profile with their effective addresses. Use `--profile work` to restrict a
+domain to one profile. Every other answer is passed through unchanged.
 
 Run `tailmix help` for every command. `-p` is shorthand for `--profile`
 everywhere. Status and other read-only commands work as a regular local user;

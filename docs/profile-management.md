@@ -740,8 +740,9 @@ addresses are host-routable only in TUN mode. It never includes keys, auth URLs,
 socket paths, or state directories.
 
 `/v1/dns/rewrites` manages public suffixes whose answers tailmix rewrites with
-a profile's effective peer addresses. `PATCH` takes
-`{"add": [{"domain", "profileName"}], "remove": [{"domain", "profileName"?}],
+effective peer addresses from every running profile by default. An optional
+`profileName` restricts a suffix to one profile. `PATCH` takes
+`{"add": [{"domain", "profileName"?}], "remove": [{"domain", "profileName"?}],
 "replace": bool}`; adding a suffix owned by another profile fails with
 `dns_rewrite_conflict` unless `replace` is set. Both methods return:
 

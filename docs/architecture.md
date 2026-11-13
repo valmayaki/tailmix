@@ -229,17 +229,18 @@ on an ephemeral loopback port. The resolver forwards each query to encrypted
 public DNS (DNS-over-HTTPS, dialed by IP so it never loops through the host
 resolver), then, for `A`/`AAAA` answers on the query's CNAME chain:
 
-- replaces a canonical address of one of the profile's online peers with that
+- replaces an unambiguous canonical address of an online peer from any profile
+  (or the selected profile when restricted) with that
   peer's effective address, with the TTL capped at 10 seconds;
-- completes a CNAME that ends at one of the profile's peer names from the peer
+- completes a CNAME that ends at a unique peer name from the peer
   list, even when public DNS returns `NXDOMAIN` for it;
-- preserves every other address, and returns the whole answer unchanged when an
-  address also belongs to another profile;
+- preserves every other address, and returns the whole answer unchanged when a
+  canonical address maps to different effective addresses;
 - drops `RRSIG`s over rewritten RRsets and clears `AD`.
 
 Rewrites have the lowest precedence: a suffix already served by a bound,
 imported, automatic MagicDNS, or shared-name route keeps that route, and the
-rewrite reports `inactive`. While the profile is not running, answers pass
+rewrite reports `inactive`. While a selected profile is not running, answers pass
 through untranslated with the TTL capped, so OS caches do not keep an
 unroutable canonical address.
 
