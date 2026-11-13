@@ -668,6 +668,9 @@ DELETE /v1/dns/routes
 GET    /v1/dns/routes/available
 GET    /v1/dns/peers
 
+GET    /v1/dns/rewrites
+PATCH  /v1/dns/rewrites
+
 GET    /v1/dns/search-domains
 PUT    /v1/dns/search-domains
 PATCH  /v1/dns/search-domains
@@ -735,6 +738,27 @@ Services, the profile's own node, and dormant leases are omitted. The response
 is empty when the daemon is down or runs in SOCKS mode, because effective
 addresses are host-routable only in TUN mode. It never includes keys, auth URLs,
 socket paths, or state directories.
+
+`/v1/dns/rewrites` manages public suffixes whose answers tailmix rewrites with
+a profile's effective peer addresses. `PATCH` takes
+`{"add": [{"domain", "profileName"}], "remove": [{"domain", "profileName"?}],
+"replace": bool}`; adding a suffix owned by another profile fails with
+`dns_rewrite_conflict` unless `replace` is set. Both methods return:
+
+```json
+{
+  "rewrites": [{
+    "domain": "shekel.africa",
+    "profileId": "p_01k2x7vq3c8m",
+    "profileName": "work",
+    "state": "active"
+  }]
+}
+```
+
+`state` is `active`, `waiting` (the profile is not running; answers pass
+through with TTLs capped at 10 seconds), or `inactive` with a `reason`
+(SOCKS mode, daemon down, or another DNS route owns the suffix).
 
 IP and DNS route resources report the persisted binding and its current
 realization together:
@@ -1031,6 +1055,7 @@ type State struct {
     // Existing fields...
     IPRouteBindings []IPRouteBinding `json:"ipRouteBindings,omitempty"`
     DNSRouteBindings []DNSRouteBinding `json:"dnsRouteBindings,omitempty"`
+    DNSRewrites []DNSRewrite `json:"dnsRewrites,omitempty"`
     SearchDomains []string `json:"searchDomains,omitempty"`
 }
 
@@ -1040,6 +1065,11 @@ type IPRouteBinding struct {
 }
 
 type DNSRouteBinding struct {
+    Domain string `json:"domain"`
+    ProfileID string `json:"profileId"`
+}
+
+type DNSRewrite struct {
     Domain string `json:"domain"`
     ProfileID string `json:"profileId"`
 }

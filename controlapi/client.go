@@ -174,6 +174,18 @@ func (c *Client) DNSPeers(ctx context.Context) (DNSPeers, error) {
 	return out, err
 }
 
+func (c *Client) DNSRewrites(ctx context.Context) (DNSRewrites, error) {
+	var out DNSRewrites
+	err := c.do(ctx, http.MethodGet, "/v1/dns/rewrites", nil, &out)
+	return out, err
+}
+
+func (c *Client) PatchDNSRewrites(ctx context.Context, request PatchDNSRewritesRequest) (DNSRewrites, error) {
+	var out DNSRewrites
+	err := c.do(ctx, http.MethodPatch, "/v1/dns/rewrites", request, &out)
+	return out, err
+}
+
 func (c *Client) SearchDomains(ctx context.Context) (SearchDomains, error) {
 	var out SearchDomains
 	err := c.do(ctx, http.MethodGet, "/v1/dns/search-domains", nil, &out)

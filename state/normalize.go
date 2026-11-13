@@ -64,6 +64,23 @@ func Normalize(st *State) {
 		return st.DNSRouteBindings[i].Domain < st.DNSRouteBindings[j].Domain
 	})
 
+	rewriteByDomain := make(map[string]DNSRewrite, len(st.DNSRewrites))
+	for _, rewrite := range st.DNSRewrites {
+		domain := normalizeDomain(rewrite.Domain)
+		if domain == "" || domain == "." || rewrite.ProfileID == "" {
+			continue
+		}
+		rewrite.Domain = domain
+		rewriteByDomain[domain] = rewrite
+	}
+	st.DNSRewrites = st.DNSRewrites[:0]
+	for _, rewrite := range rewriteByDomain {
+		st.DNSRewrites = append(st.DNSRewrites, rewrite)
+	}
+	sort.Slice(st.DNSRewrites, func(i, j int) bool {
+		return st.DNSRewrites[i].Domain < st.DNSRewrites[j].Domain
+	})
+
 	search := st.SearchDomains[:0]
 	seen := map[string]bool{}
 	for _, raw := range st.SearchDomains {

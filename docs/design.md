@@ -320,7 +320,8 @@ and `OperatorUser` permissions are evaluated in the same request path as
 
 Aggregate lifecycle commands use `tailmix profiles ...`; IP route bindings use
 `tailmix routes ...`; and DNS bindings and search policy use
-`tailmix dns routes ...` and `tailmix dns search ...`. All use a separate
+`tailmix dns routes ...` and `tailmix dns search ...`; and public-domain
+answer rewrites use `tailmix dns rewrites ...`. All use a separate
 multi-profile API and must not silently pick one profile.
 
 Profile-wide imports are explicit live policy:

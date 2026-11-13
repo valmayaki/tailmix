@@ -19,6 +19,7 @@ import (
 
 	"github.com/maisem/tailmix/controlapi"
 	tailmixdns "github.com/maisem/tailmix/dns"
+	"github.com/maisem/tailmix/dnsrewrite"
 	"github.com/maisem/tailmix/effectiveip"
 	"github.com/maisem/tailmix/hosttun"
 	"github.com/maisem/tailmix/packetmap"
@@ -82,6 +83,12 @@ type supervisor struct {
 	mux           *tunmux.Mux
 	dnsService    tailmixdns.Service
 	dnsForwarders []*tailmixdns.Forwarder
+
+	// dnsRewrite serves rewrite routes; dnsRewriteRoutes are the routes the
+	// last successful DNS configuration installed for it.
+	dnsRewrite       *dnsrewrite.Engine
+	dnsRewriteRoutes []dnsrewrite.Route
+
 	socksListener net.Listener
 	socksRouter   *socksproxy.DynamicRouter
 	networkErr    chan error
@@ -693,7 +700,18 @@ func (s *supervisor) setExitNodePreferencesLocked(statuses []tailmixprofile.Stat
 
 func (s *supervisor) configureDNSLocked(cfg tailmixdns.LiveConfig) error {
 	nextForwarders := make([]*tailmixdns.Forwarder, 0, len(cfg.Routes))
+	var nextRewrites []dnsrewrite.Route
 	for i := range cfg.Routes {
+		if cfg.Routes[i].Rewrite {
+			resolver, err := s.dnsRewriteResolverLocked()
+			if err != nil {
+				closeForwarders(nextForwarders)
+				return err
+			}
+			cfg.Routes[i].Resolvers = []*dnstype.Resolver{resolver}
+			nextRewrites = append(nextRewrites, dnsrewrite.Route{Suffix: cfg.Routes[i].Suffix, ProfileID: cfg.Routes[i].ProfileID})
+			continue
+		}
 		if cfg.Routes[i].ProfileDNS {
 			managed := s.runtimes[cfg.Routes[i].ProfileID]
 			if managed == nil {
@@ -737,6 +755,8 @@ func (s *supervisor) configureDNSLocked(cfg tailmixdns.LiveConfig) error {
 	old := s.dnsForwarders
 	s.dnsForwarders = nextForwarders
 	closeForwarders(old)
+	s.dnsRewriteRoutes = nextRewrites
+	s.updateDNSRewriteLocked()
 	return nil
 }
 
@@ -762,6 +782,7 @@ func (s *supervisor) close() error {
 	}
 	closeForwarders(s.dnsForwarders)
 	s.dnsForwarders = nil
+	s.closeDNSRewriteLocked()
 	if s.dnsService != nil {
 		_ = s.dnsService.Close()
 		s.dnsService = nil
@@ -811,6 +832,7 @@ func cloneState(st state.State) state.State {
 	st.Leases = append([]state.EffectiveLease(nil), st.Leases...)
 	st.IPRouteBindings = append([]state.IPRouteBinding(nil), st.IPRouteBindings...)
 	st.DNSRouteBindings = append([]state.DNSRouteBinding(nil), st.DNSRouteBindings...)
+	st.DNSRewrites = append([]state.DNSRewrite(nil), st.DNSRewrites...)
 	st.SearchDomains = append([]string(nil), st.SearchDomains...)
 	if st.ExitNode != nil {
 		exitNode := *st.ExitNode
@@ -1251,6 +1273,11 @@ func (s *supervisor) profileHasBindingsLocked(profileID string) bool {
 	}
 	for _, binding := range s.st.DNSRouteBindings {
 		if binding.ProfileID == profileID {
+			return true
+		}
+	}
+	for _, rewrite := range s.st.DNSRewrites {
+		if rewrite.ProfileID == profileID {
 			return true
 		}
 	}

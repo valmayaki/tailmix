@@ -866,6 +866,15 @@ func tunDNSLiveConfig(st state.State, statuses []tailmixprofile.Status, leases [
 		}
 		routeBySuffix[name] = tailmixdns.Route{Suffix: name}
 	}
+	// Rewrites have the lowest precedence: a suffix already served by an
+	// advertised, imported, automatic, or shared-name route keeps that route.
+	for _, rewrite := range st.DNSRewrites {
+		domain := routingpolicy.NormalizeDomain(rewrite.Domain)
+		if _, taken := routeBySuffix[domain]; taken || domain == "" || domain == "." {
+			continue
+		}
+		routeBySuffix[domain] = tailmixdns.Route{Suffix: domain, ProfileID: rewrite.ProfileID, Rewrite: true}
+	}
 	var domains []tailmixdns.Domain
 	for profileID := range domainOwners {
 		if suffix := suffixByProfile[profileID]; suffix != "" {

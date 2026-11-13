@@ -64,10 +64,19 @@ type DNSPeerBackend interface {
 	DNSPeers(context.Context) (DNSPeers, error)
 }
 
+// DNSRewriteBackend is implemented by daemons that rewrite public DNS answers
+// with effective peer addresses. It is optional for the same reason as
+// DNSPeerBackend.
+type DNSRewriteBackend interface {
+	DNSRewrites(context.Context) (DNSRewrites, error)
+	PatchDNSRewrites(context.Context, PatchDNSRewritesRequest) (DNSRewrites, error)
+}
+
 func Handler(backend Backend) http.Handler {
 	mux := http.NewServeMux()
 	updates, hasUpdates := backend.(UpdateBackend)
 	dnsPeers, hasDNSPeers := backend.(DNSPeerBackend)
+	dnsRewrites, hasDNSRewrites := backend.(DNSRewriteBackend)
 	updateUnavailable := func(w http.ResponseWriter) {
 		writeResult(w, nil, NewError("unsupported", "this daemon does not support automatic updates"))
 	}
@@ -275,6 +284,30 @@ func Handler(backend Backend) http.Handler {
 			return
 		}
 		result, err := dnsPeers.DNSPeers(r.Context())
+		writeResult(w, result, err)
+	})
+
+	rewritesUnavailable := func(w http.ResponseWriter) {
+		writeResult(w, nil, NewError("unsupported", "this daemon does not support DNS rewrites"))
+	}
+	mux.HandleFunc("GET /v1/dns/rewrites", func(w http.ResponseWriter, r *http.Request) {
+		if !hasDNSRewrites {
+			rewritesUnavailable(w)
+			return
+		}
+		result, err := dnsRewrites.DNSRewrites(r.Context())
+		writeResult(w, result, err)
+	})
+	mux.HandleFunc("PATCH /v1/dns/rewrites", func(w http.ResponseWriter, r *http.Request) {
+		if !hasDNSRewrites {
+			rewritesUnavailable(w)
+			return
+		}
+		var request PatchDNSRewritesRequest
+		if !decodeRequest(w, r, &request) {
+			return
+		}
+		result, err := dnsRewrites.PatchDNSRewrites(r.Context(), request)
 		writeResult(w, result, err)
 	})
 
