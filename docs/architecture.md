@@ -221,6 +221,34 @@ Search domains are a separate ordered list. A configured search domain is
 installed in the OS only when an active DNS route covers it. This keeps
 short-name expansion separate from resolver selection.
 
+### DNS rewrites
+
+A DNS rewrite binds a public suffix to a profile without that profile having to
+advertise it. tailmix installs the suffix with an in-process rewriting resolver
+on an ephemeral loopback port. The resolver forwards each query to encrypted
+public DNS (DNS-over-HTTPS, dialed by IP so it never loops through the host
+resolver), then, for `A`/`AAAA` answers on the query's CNAME chain:
+
+- replaces an unambiguous canonical address of an online peer from any profile
+  (or the selected profile when restricted) with that
+  peer's effective address, with the TTL capped at 10 seconds;
+- completes a CNAME that ends at a unique peer name from the peer
+  list, even when public DNS returns `NXDOMAIN` for it;
+- preserves every other address, and returns the whole answer unchanged when a
+  canonical address maps to different effective addresses;
+- drops `RRSIG`s over rewritten RRsets and clears `AD`.
+
+Rewrites have the lowest precedence: a suffix already served by a bound,
+imported, automatic MagicDNS, or shared-name route keeps that route, and the
+rewrite reports `inactive`. While a selected profile is not running, answers pass
+through untranslated with the TTL capped, so OS caches do not keep an
+unroutable canonical address.
+
+The resolver lives for the daemon's lifetime. Each reconciliation swaps its
+routes and the published peer view (the same data as `GET /v1/dns/peers`)
+atomically, so queries never wait on the supervisor lock and the answer cache,
+including serve-stale entries, survives policy changes.
+
 ## Packet path
 
 Routing uses immutable BART tables. Direct peers and Tailscale Services occupy
@@ -475,6 +503,7 @@ and does not install host routes or DNS configuration.
 | [`packetmap`](../packetmap/packetmap.go) | BART lookups and in-place address/checksum translation |
 | [`effectiveip`](../effectiveip/effectiveip.go) | Stable, family-aware peer and Service lease allocation |
 | [`dns`](../dns/service.go) | Aggregate DNS service, OS integration, and profile forwarders |
+| [`dnsrewrite`](../dnsrewrite/engine.go) | Public-DNS resolver that rewrites canonical peer addresses to effective ones |
 | [`state`](../state/state.go) | Persistent schema and atomic JSON store |
 | [`socksproxy`](../socksproxy/router.go) | Userspace-mode profile selection and TCP forwarding |
 | [`integration`](../integration/multitailnet_test.go) | Cross-package multi-tailnet contracts |

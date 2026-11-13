@@ -407,9 +407,17 @@ func completionCommandTree() *completionCommand {
 			leaf("clear", "Clear DNS search domains", []completionFlag{jsonFlag()}),
 		},
 	}
+	dnsRewrites := &completionCommand{
+		name: "rewrites", description: "Rewrite public DNS answers with effective peer addresses", help: true,
+		subcommands: []*completionCommand{
+			leaf("list", "List DNS rewrites", []completionFlag{jsonFlag()}),
+			{name: "add", description: "Rewrite public DNS suffixes for a profile", flags: []completionFlag{profileFlag(), flag("Replace a rewrite owned by another profile", completionNoValue, "--replace"), jsonFlag()}, variadic: completionFreeValue},
+			{name: "remove", description: "Remove DNS rewrites", flags: []completionFlag{profileFlag(), jsonFlag()}, variadic: completionFreeValue},
+		},
+	}
 	dns := &completionCommand{
-		name: "dns", description: "Manage DNS routing and search domains", help: true,
-		subcommands: []*completionCommand{dnsRoutes, dnsSearch},
+		name: "dns", description: "Manage DNS routing, rewrites, and search domains", help: true,
+		subcommands: []*completionCommand{dnsRoutes, dnsSearch, dnsRewrites},
 	}
 	wireguard := &completionCommand{
 		name: "wireguard", description: "Apply and inspect raw WireGuard profiles", help: true,

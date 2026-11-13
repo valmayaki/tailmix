@@ -311,6 +311,31 @@ type DNSPeerAddress struct {
 	EffectiveIP netip.Addr `json:"effectiveIp"`
 }
 
+// DNSRewrite reports one public suffix whose answers are rewritten with
+// effective peer addresses. Empty profile fields mean all profiles.
+type DNSRewrite struct {
+	Domain      string `json:"domain"`
+	ProfileID   string `json:"profileId,omitempty"`
+	ProfileName string `json:"profileName,omitempty"`
+	// State is "active" when the suffix is installed with the rewriting
+	// resolver, "waiting" when the profile is not running (answers pass
+	// through with capped TTLs), or "overridden" when another DNS route owns
+	// the same suffix.
+	State  string `json:"state"`
+	Reason string `json:"reason,omitempty"`
+}
+
+type DNSRewrites struct {
+	Rewrites       []DNSRewrite `json:"rewrites"`
+	ReconcileError string       `json:"reconcileError,omitempty"`
+}
+
+type PatchDNSRewritesRequest struct {
+	Add     []DNSRouteMutation `json:"add,omitempty"`
+	Remove  []DNSRouteUnbind   `json:"remove,omitempty"`
+	Replace bool               `json:"replace,omitempty"`
+}
+
 type DNSRouteMutation struct {
 	Domain      string `json:"domain"`
 	ProfileName string `json:"profileName"`

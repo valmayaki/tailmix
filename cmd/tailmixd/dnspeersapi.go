@@ -32,6 +32,7 @@ func (s *supervisor) DNSPeers(_ context.Context) (controlapi.DNSPeers, error) {
 func (s *supervisor) publishDNSPeersLocked() {
 	peers := s.dnsPeersLocked()
 	s.dnsPeers.Store(&peers)
+	s.updateDNSRewriteLocked()
 }
 
 func (s *supervisor) dnsPeersLocked() controlapi.DNSPeers {

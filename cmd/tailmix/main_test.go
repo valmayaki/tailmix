@@ -30,6 +30,7 @@ type fakeManagementClient struct {
 	exitCleared      bool
 	exitNodes        controlapi.ExitNodes
 	dnsPatch         controlapi.PatchDNSRoutesRequest
+	dnsRewritePatch  controlapi.PatchDNSRewritesRequest
 	searchReplace    []string
 	statusProfiles   []controlapi.Profile
 	serverVersion    tailmixversion.Meta
@@ -106,6 +107,13 @@ func (f *fakeManagementClient) DNSRoutes(context.Context, bool) (controlapi.DNSR
 func (f *fakeManagementClient) PatchDNSRoutes(_ context.Context, request controlapi.PatchDNSRoutesRequest) (controlapi.DNSRoutes, error) {
 	f.dnsPatch = request
 	return controlapi.DNSRoutes{}, nil
+}
+func (f *fakeManagementClient) DNSRewrites(context.Context) (controlapi.DNSRewrites, error) {
+	return controlapi.DNSRewrites{}, nil
+}
+func (f *fakeManagementClient) PatchDNSRewrites(_ context.Context, request controlapi.PatchDNSRewritesRequest) (controlapi.DNSRewrites, error) {
+	f.dnsRewritePatch = request
+	return controlapi.DNSRewrites{}, nil
 }
 func (f *fakeManagementClient) SearchDomains(context.Context) (controlapi.SearchDomains, error) {
 	return controlapi.SearchDomains{}, nil
@@ -491,6 +499,26 @@ func TestShortProfileOption(t *testing.T) {
 			},
 		},
 		{
+			name: "DNS rewrite add",
+			args: []string{"dns", "rewrites", "add", "-p", "work", "Shekel.Africa."},
+			gotProfile: func(client *fakeManagementClient) string {
+				if len(client.dnsRewritePatch.Add) == 0 || client.dnsRewritePatch.Add[0].Domain != "shekel.africa" {
+					return ""
+				}
+				return client.dnsRewritePatch.Add[0].ProfileName
+			},
+		},
+		{
+			name: "DNS rewrite remove",
+			args: []string{"dns", "rewrites", "remove", "shekel.africa", "--profile=work"},
+			gotProfile: func(client *fakeManagementClient) string {
+				if len(client.dnsRewritePatch.Remove) == 0 {
+					return ""
+				}
+				return client.dnsRewritePatch.Remove[0].ProfileName
+			},
+		},
+		{
 			name: "DNS route accept all",
 			args: []string{"dns", "routes", "set", "-p", "work", "--accept-all=true"},
 			gotProfile: func(client *fakeManagementClient) string {
@@ -547,7 +575,7 @@ func TestRootHelpShowsFullSubcommandSpace(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d", code)
 	}
-	for _, command := range []string{"status", "up", "down", "profiles", "routes", "exit-node", "dns routes", "dns search", "wireguard", "tailscale", "ts", "completion", "version"} {
+	for _, command := range []string{"status", "up", "down", "profiles", "routes", "exit-node", "dns routes", "dns search", "dns rewrites", "wireguard", "tailscale", "ts", "completion", "version"} {
 		if !strings.Contains(stdout.String(), command) {
 			t.Errorf("help does not contain %q:\n%s", command, stdout.String())
 		}

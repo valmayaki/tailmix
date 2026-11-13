@@ -49,6 +49,8 @@ type managementClient interface {
 	ClearExitNode(context.Context) (controlapi.ExitNodes, error)
 	DNSRoutes(context.Context, bool) (controlapi.DNSRoutes, error)
 	PatchDNSRoutes(context.Context, controlapi.PatchDNSRoutesRequest) (controlapi.DNSRoutes, error)
+	DNSRewrites(context.Context) (controlapi.DNSRewrites, error)
+	PatchDNSRewrites(context.Context, controlapi.PatchDNSRewritesRequest) (controlapi.DNSRewrites, error)
 	SearchDomains(context.Context) (controlapi.SearchDomains, error)
 	ReplaceSearchDomains(context.Context, []string) (controlapi.SearchDomains, error)
 	PatchSearchDomains(context.Context, controlapi.PatchSearchDomainsRequest) (controlapi.SearchDomains, error)
@@ -790,6 +792,8 @@ func runDNS(ctx context.Context, client managementClient, args []string, deps de
 		return runDNSRoutes(ctx, client, args[1:], deps)
 	case "search":
 		return runDNSSearch(ctx, client, args[1:], deps)
+	case "rewrites":
+		return runDNSRewrites(ctx, client, args[1:], deps)
 	default:
 		return usageError{fmt.Sprintf("unknown dns command %q", args[0])}
 	}
@@ -901,6 +905,100 @@ func runDNSRoutes(ctx context.Context, client managementClient, args []string, d
 	default:
 		return usageError{fmt.Sprintf("unknown dns routes command %q", args[0])}
 	}
+}
+
+func runDNSRewrites(ctx context.Context, client managementClient, args []string, deps dependencies) error {
+	if len(args) == 0 || isHelp(args[0]) {
+		fmt.Fprint(deps.stdout, dnsRewritesHelp)
+		return nil
+	}
+	rest := args[1:]
+	var result controlapi.DNSRewrites
+	switch args[0] {
+	case "list":
+		jsonOutput, err := takeBool(&rest, "--json")
+		if err != nil {
+			return err
+		}
+		if err := noOperands(rest); err != nil {
+			return err
+		}
+		if result, err = client.DNSRewrites(ctx); err != nil {
+			return err
+		}
+		return writeDNSRewritesResult(deps.stdout, result, jsonOutput)
+	case "add":
+		profileName, _, err := takeProfile(&rest)
+		if err != nil {
+			return err
+		}
+		replace, err := takeBool(&rest, "--replace")
+		if err != nil {
+			return err
+		}
+		jsonOutput, err := takeBool(&rest, "--json")
+		if err != nil {
+			return err
+		}
+		domains, err := parseDomains(rest, false)
+		if err != nil {
+			return err
+		}
+		request := controlapi.PatchDNSRewritesRequest{Replace: replace}
+		for _, domain := range domains {
+			request.Add = append(request.Add, controlapi.DNSRouteMutation{Domain: domain, ProfileName: profileName})
+		}
+		if result, err = client.PatchDNSRewrites(ctx, request); err != nil {
+			return err
+		}
+		return writeDNSRewritesResult(deps.stdout, result, jsonOutput)
+	case "remove":
+		profileName, _, err := takeProfile(&rest)
+		if err != nil {
+			return err
+		}
+		jsonOutput, err := takeBool(&rest, "--json")
+		if err != nil {
+			return err
+		}
+		domains, err := parseDomains(rest, false)
+		if err != nil {
+			return err
+		}
+		request := controlapi.PatchDNSRewritesRequest{}
+		for _, domain := range domains {
+			request.Remove = append(request.Remove, controlapi.DNSRouteUnbind{Domain: domain, ProfileName: profileName})
+		}
+		if result, err = client.PatchDNSRewrites(ctx, request); err != nil {
+			return err
+		}
+		return writeDNSRewritesResult(deps.stdout, result, jsonOutput)
+	default:
+		return usageError{fmt.Sprintf("unknown dns rewrites command %q", args[0])}
+	}
+}
+
+func writeDNSRewritesResult(w io.Writer, result controlapi.DNSRewrites, jsonOutput bool) error {
+	if jsonOutput {
+		return writeJSON(w, result)
+	}
+	table := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(table, "DOMAIN\tPROFILE\tSTATE")
+	for _, rewrite := range result.Rewrites {
+		state := "✓"
+		if rewrite.State != "active" {
+			state = rewrite.State + ":" + rewrite.Reason
+		}
+		profile := rewrite.ProfileName
+		if profile == "" {
+			profile = "all"
+		}
+		fmt.Fprintf(table, "%s\t%s\t%s\n", rewrite.Domain, profile, state)
+	}
+	if result.ReconcileError != "" {
+		fmt.Fprintf(table, "!\t\tfailed:%s\n", result.ReconcileError)
+	}
+	return table.Flush()
 }
 
 func runDNSSearch(ctx context.Context, client managementClient, args []string, deps dependencies) error {
@@ -1576,6 +1674,7 @@ Commands:
   exit-node    Select one profile's exit node for default traffic
   dns routes   Route DNS suffixes through selected profiles
   dns search   Manage the ordered OS search-domain list
+  dns rewrites Rewrite public DNS answers with effective peer addresses
   wireguard    Apply and inspect raw WireGuard profiles
   tailscale    Run an upstream Tailscale command for one profile
   ts           Shortcut for tailscale
@@ -1684,6 +1783,7 @@ every exit node in that country.
 const dnsHelp = `Usage:
   tailmix dns routes <command> [arguments]
   tailmix dns search <command> [arguments]
+  tailmix dns rewrites <command> [arguments]
 `
 
 const dnsRoutesHelp = `Usage:
@@ -1700,6 +1800,27 @@ imports are shown by "dns routes list".
 The default list also includes every detected DNS route; --available shows only
 detected routes.
 The root suffix "." selects a profile's default DNS resolver route.
+`
+
+const dnsRewritesHelp = `Usage:
+  tailmix dns rewrites list [--json]
+  tailmix dns rewrites add <domain>... [--profile <profile>] [--replace] [--json]
+  tailmix dns rewrites remove <domain>... [--profile <expected-profile>] [--json]
+
+Profile option: -p, --profile <profile>
+
+A rewrite resolves a public DNS suffix, such as a company domain whose records
+point at tailnet addresses, through an encrypted public resolver (Cloudflare,
+then Quad9, over DNS-over-HTTPS). By default, canonical addresses of online
+peers from every profile are replaced with the effective addresses this host
+routes. Use --profile to restrict a rewrite to one profile. Ambiguous addresses
+are left unchanged. A CNAME to a unique peer is completed from its peer list.
+Every other answer passes through unchanged.
+
+Rewrites have the lowest DNS precedence: a suffix already served by a bound,
+imported, or automatic DNS route keeps that route. Rewritten answers, and
+answers under a rewrite whose selected profile is not running, have their TTL capped at
+10 seconds. Rewrites require TUN mode.
 `
 
 const dnsSearchHelp = `Usage:

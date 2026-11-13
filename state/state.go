@@ -32,6 +32,7 @@ type State struct {
 	Leases           []EffectiveLease  `json:"leases"`
 	IPRouteBindings  []IPRouteBinding  `json:"ipRouteBindings,omitempty"`
 	DNSRouteBindings []DNSRouteBinding `json:"dnsRouteBindings,omitempty"`
+	DNSRewrites      []DNSRewrite      `json:"dnsRewrites,omitempty"`
 	SearchDomains    []string          `json:"searchDomains,omitempty"`
 	ExitNode         *ExitNode         `json:"exitNode,omitempty"`
 	Updates          UpdateState       `json:"updates,omitempty"`
@@ -62,6 +63,14 @@ type IPRouteBinding struct {
 type DNSRouteBinding struct {
 	Domain    string `json:"domain"`
 	ProfileID string `json:"profileId"`
+}
+
+// DNSRewrite resolves a public DNS suffix through an encrypted public
+// resolver and replaces canonical peer addresses with effective addresses.
+// An empty ProfileID matches peers from every running profile when unambiguous.
+type DNSRewrite struct {
+	Domain    string `json:"domain"`
+	ProfileID string `json:"profileId,omitempty"`
 }
 
 type EffectiveLease struct {

@@ -23,7 +23,11 @@ type Route struct {
 	Suffix     string
 	ProfileID  string
 	ProfileDNS bool
-	Resolvers  []*dnstype.Resolver
+	// Rewrite marks a public suffix served by the daemon's rewriting
+	// resolver, which replaces the profile's canonical peer addresses in
+	// public answers with effective addresses.
+	Rewrite   bool
+	Resolvers []*dnstype.Resolver
 }
 
 type LiveConfig struct {
